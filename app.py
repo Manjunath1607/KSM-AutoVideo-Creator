@@ -14,13 +14,15 @@ from moviepy.editor import (
     ImageClip,
     CompositeVideoClip,
 )
+from moviepy.video.fx.all import loop as fx_loop
 from PIL import Image, ImageDraw, ImageFont
 
 # =============================================================
 # KSM AutoVideo Creator — gTTS Edition (no OpenAI required)
-# - TTS: gTTS (free)
+# - gTTS voice (free)
 # - Captions & title via Pillow (no ImageMagick)
 # - Pexels backgrounds optional via PEXELS_API_KEY (Streamlit secrets)
+# - Pixabay fallbacks (stable, no key)
 # =============================================================
 
 st.set_page_config(page_title="KSM AutoVideo Creator", page_icon="🎥", layout="centered")
@@ -30,17 +32,17 @@ PEXELS_API_KEY = st.secrets.get("PEXELS_API_KEY")
 
 # ---------- UI ----------
 st.title("KSM AutoVideo Creator")
-st.caption("Paste Title + Content → get a 30–90 sec video with free TTS (gTTS), dynamic background, and optional logo overlay.")
+st.caption("Paste Title + Content → get a 30–180 sec video with free TTS (gTTS), dynamic background, and optional logo overlay.")
 
 c1, c2 = st.columns([2, 1])
 with c1:
     title = st.text_input("Video Title", placeholder="e.g., DMAIC meets Process Intelligence")
 with c2:
-    target_duration = st.slider("Target Duration (sec)", 30, 90, 60, 5)
+    target_duration = st.slider("Target Duration (sec)", 30, 180, 60, 5)
 
 content = st.text_area(
     "Video Content (1–3 short paragraphs)",
-    height=220,
+    height=360,  # bigger text box
     placeholder=(
         "Paste your learning here… We'll auto-trim to fit your target duration, "
         "create voice with gTTS, choose a relevant background, and render captions."
@@ -48,23 +50,30 @@ content = st.text_area(
 )
 
 with st.expander("Advanced Options", expanded=False):
-    language = st.selectbox("Voice language (gTTS)", ["en", "en-uk", "en-au", "hi", "ta"], index=0, help="gTTS language code")
+    language = st.selectbox(
+        "Voice language (gTTS)",
+        ["en", "en-uk", "en-au", "hi", "ta"],
+        index=0,
+        help="gTTS language code (we use the first part, e.g., 'en').",
+    )
     topic_hint = st.text_input("Topic / Keywords (optional)", placeholder="Lean Six Sigma, BPM, AI, Process Mining")
     enable_captions = st.checkbox("Embed rolling captions", value=True)
     add_title_card = st.checkbox("Add branded title card (first 3s)", value=True)
     bgm_mix = st.checkbox("Add light background music (royalty-free demo)", value=False)
+    title_fontsize = st.slider("Title font size", 28, 72, 44, 2)
+    caption_fontsize = st.slider("Caption font size", 24, 64, 36, 2)
 
 logo_file = st.file_uploader("Optional: Upload your logo (PNG with transparency works best)", type=["png", "jpg", "jpeg"])
 
 # ---------- Helpers ----------
 CURATED_BG = {
     "default": [
-        "https://cdn.pixabay.com/video/2019/04/02/21877-327974102_large.mp4",
-        "https://cdn.pixabay.com/video/2022/04/21/115423-705027939_large.mp4",
-        "https://cdn.pixabay.com/video/2020/04/29/39423-414173504_large.mp4",
+        "https://cdn.pixabay.com/video/2018/09/20/18160-294634931_large.mp4",
+        "https://cdn.pixabay.com/video/2019/05/30/24087-337550838_large.mp4",
+        "https://cdn.pixabay.com/video/2019/09/18/27232-359659737_large.mp4",
     ],
     "lean": [
-        "https://cdn.pixabay.com/video/2022/08/18/127279-743744672_large.mp4",
+        "https://cdn.pixabay.com/video/2022/04/21/115423-705027939_large.mp4",
     ],
     "process": [
         "https://cdn.pixabay.com/video/2020/04/16/36073-409188276_large.mp4",
@@ -75,19 +84,14 @@ CURATED_BG = {
 }
 
 
-
 def slugify(text: str) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", (text or "ksm-video").strip().lower())
     return s.strip("-") or "ksm-video"
 
 
-def estimate_speaking_time_seconds(text: str, wps: float = 2.2) -> int:
-    words = max(1, len(text.strip().split()))
-    return math.ceil(words / wps)
-
-
-def trim_to_duration(text: str, target_sec: int, wps: float = 2.2) -> str:
-    max_words = max(35, int(target_sec * wps))
+def trim_to_duration(text: str, target_sec: int, wps: float = 2.0) -> str:
+    """Trim text to roughly fit target duration using words-per-second heuristic."""
+    max_words = max(35, int(target_sec * wps))  # keep a sensible minimum
     words = text.strip().split()
     if len(words) <= max_words:
         return text.strip()
@@ -143,7 +147,6 @@ def download_to_temp(url: str, suffix: str) -> str:
 def synthesize_speech(text: str, lang: str = "en") -> str:
     fd, path = tempfile.mkstemp(suffix=".mp3")
     os.close(fd)
-    # gTTS may take a couple seconds; keep text concise (we auto-trim)
     gTTS(text=text, lang=lang.split("-")[0]).save(path)
     return path
 
@@ -156,7 +159,7 @@ def make_text_image(
     fontsize: int = 34,
     fg=(255, 255, 255),
     bg=(0, 0, 0, 160),
-) -> Image.Image:
+):
     max_chars = max(10, width // (fontsize // 2))
     wrapped = []
     for para in text.splitlines():
@@ -192,6 +195,8 @@ def build_video(
     enable_captions: bool,
     add_title_card: bool,
     bgm_mix: bool,
+    title_fontsize: int,
+    caption_fontsize: int,
 ) -> str:
     trimmed_text = trim_to_duration(narration_text, target_duration)
 
@@ -204,17 +209,22 @@ def build_video(
     bg_path = download_to_temp(bg_url, suffix=".mp4")
     video_bg = VideoFileClip(bg_path)
 
-    # Duration
-    out_dur = min(max(audio.duration, 30), float(target_duration), float(video_bg.duration))
-    video_bg = video_bg.subclip(0, out_dur).volumex(1.0)
+    # Duration: prioritize target_duration and narration; loop background if needed
+    out_dur = max(30.0, min(float(target_duration), max(float(audio.duration), 30.0)))
+    if video_bg.duration < out_dur - 0.1:
+        video_bg = fx_loop(video_bg, duration=out_dur)
+    else:
+        video_bg = video_bg.subclip(0, out_dur)
+    video_bg = video_bg.volumex(1.0)
     video_bg = video_bg.set_audio(audio)
+
     overlays = [video_bg]
 
     # Title card (Pillow)
     if add_title_card:
         try:
             w, h = video_bg.size
-            img = make_text_image(title, width=min(w - 80, int(w * 0.9)), fontsize=42)
+            img = make_text_image(title, width=min(w - 80, int(w * 0.9)), fontsize=title_fontsize)
             title_clip = ImageClip(img).set_duration(min(3, out_dur))
             title_clip = title_clip.set_position(("center", "center"))
             overlays.append(title_clip)
@@ -242,19 +252,19 @@ def build_video(
     # Captions
     if enable_captions:
         try:
-            total_words = max(1, len(trimmed_text.split()))
+            words = trimmed_text.split()
+            total_words = max(1, len(words))
             approx_segments = max(3, int(out_dur // 2.5))
             words_per_seg = max(6, total_words // approx_segments)
             t = 0.0
             w, h = video_bg.size
             cap_w = int(w * 0.9)
-            words = trimmed_text.split()
             for i in range(0, len(words), words_per_seg):
                 chunk = " ".join(words[i : i + words_per_seg])
                 if not chunk:
                     break
                 seg_dur = min(4.0, max(1.4, out_dur / approx_segments))
-                img = make_text_image(chunk, width=cap_w, fontsize=32)
+                img = make_text_image(chunk, width=cap_w, fontsize=caption_fontsize)
                 cap_clip = ImageClip(img).set_duration(seg_dur)
                 cap_clip = cap_clip.set_position(("center", int(h * 0.82))).set_start(t)
                 overlays.append(cap_clip)
@@ -299,7 +309,7 @@ def build_video(
 btn = st.button("🎬 Generate Video", use_container_width=True, disabled=not title or not content)
 if btn:
     try:
-        with st.spinner("Generating voice (gTTS), selecting background, and rendering video…"):
+        with st.spinner("Generating voice (gTTS), looping background, and rendering video…"):
             logo_bytes = logo_file.read() if logo_file else None
             out_path = build_video(
                 title=title.strip(),
@@ -311,6 +321,8 @@ if btn:
                 enable_captions=enable_captions,
                 add_title_card=add_title_card,
                 bgm_mix=bgm_mix,
+                title_fontsize=title_fontsize,
+                caption_fontsize=caption_fontsize,
             )
         st.success("✅ Video generated!")
         st.video(out_path)
@@ -321,7 +333,6 @@ if btn:
 
 # ---------- Footer ----------
 st.caption(
-    "Pexels key (optional) can be added in Streamlit Secrets as PEXELS_API_KEY for smarter backgrounds. "
-    "Captions & title use Pillow (no ImageMagick needed)."
+    "Add PEXELS_API_KEY in Streamlit Secrets (optional) for smarter backgrounds. "
+    "Captions & title use Pillow (no ImageMagick). Background loops to fill duration."
 )
-
