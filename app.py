@@ -1,11 +1,9 @@
-pip install streamlit openai moviepy requests
 import os
 import io
 import math
 import tempfile
 import requests
 from pathlib import Path
-
 import streamlit as st
 from moviepy.editor import (
     VideoFileClip,
@@ -342,3 +340,4 @@ st.caption(
     "Needs secrets: OPENAI_API_KEY (required), PEXELS_API_KEY (optional for smarter backgrounds).\n"
     "If ImageMagick is not present on the host, title card / captions will auto-skip."
 )
+
