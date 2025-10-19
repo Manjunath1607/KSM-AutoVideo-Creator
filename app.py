@@ -58,20 +58,22 @@ logo_file = st.file_uploader("Optional: Upload your logo (PNG with transparency 
 
 # ---------- Helpers ----------
 CURATED_BG = {
+    "default": [
+        "https://cdn.pixabay.com/video/2019/04/02/21877-327974102_large.mp4",
+        "https://cdn.pixabay.com/video/2022/04/21/115423-705027939_large.mp4",
+        "https://cdn.pixabay.com/video/2020/04/29/39423-414173504_large.mp4",
+    ],
     "lean": [
-        "https://player.vimeo.com/external/357479265.sd.mp4?s=9a18c1a7b09f3f5c6e237ef55ff29ce7cbe9da9a&profile_id=164",
-        "https://player.vimeo.com/external/214857965.sd.mp4?s=3b7627a6d4a485a4f33a61f54e63a60b9d2e6cda&profile_id=164",
+        "https://cdn.pixabay.com/video/2022/08/18/127279-743744672_large.mp4",
     ],
     "process": [
-        "https://player.vimeo.com/external/357478777.sd.mp4?s=4f4c3ee6c52777c3339f6f1a6fcba6d8b49e6c38&profile_id=164",
+        "https://cdn.pixabay.com/video/2020/04/16/36073-409188276_large.mp4",
     ],
     "ai": [
-        "https://player.vimeo.com/external/331695260.sd.mp4?s=6f1b8a8b3022c1b3b3c9f94d0d8de7b4d8b3b3a0&profile_id=164",
-    ],
-    "default": [
-        "https://player.vimeo.com/external/357479265.sd.mp4?s=9a18c1a7b09f3f5c6e237ef55ff29ce7cbe9da9a&profile_id=164",
+        "https://cdn.pixabay.com/video/2021/09/20/89655-610714152_large.mp4",
     ],
 }
+
 
 
 def slugify(text: str) -> str:
@@ -322,3 +324,4 @@ st.caption(
     "Pexels key (optional) can be added in Streamlit Secrets as PEXELS_API_KEY for smarter backgrounds. "
     "Captions & title use Pillow (no ImageMagick needed)."
 )
+
